@@ -14,9 +14,3 @@ variable "image" {
   default     = "rocky:9"
   description = "VM operating System"
 }
-
-variable "disk_size" {
-  type = number
-  default = 100
-  description = "Max Disk usage"
-}

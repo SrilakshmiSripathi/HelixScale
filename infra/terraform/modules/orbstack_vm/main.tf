@@ -2,7 +2,7 @@ terraform {
   required_providers {
     orbstack = {
       source  = "robertdebock/orbstack"
-      version = "~> 3.0"
+      version = "~> 3.1.2"
     }
   }
 }
@@ -11,5 +11,4 @@ resource "orbstack_machine" "vm" {
   name  = var.name
   arch  = var.arch
   image = var.image
-  disk_size = number.disk_size
-}
+  }
