@@ -23,8 +23,7 @@ resource "tailscale_tailnet_key" "vm_auth_key" {
   preauthorized = true
   expiry        = 3600 # 1 hour validity window
   tags = [
-    "tag:helixscale-cluster",
-    "tag:automation"
+    "tag:helixscale-prod"
   ]
 }
 
