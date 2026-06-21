@@ -8,10 +8,6 @@ terraform {
       source  = "tailscale/tailscale"
       version = "~> 0.13"
     }
-    ansible = {
-      version = "~> 1.4.0"
-      source  = "ansible/ansible"
-    }
   }
 }
 
@@ -26,16 +22,20 @@ resource "tailscale_tailnet_key" "vm_auth_key" {
   ephemeral     = false
   preauthorized = true
   expiry        = 3600 # 1 hour validity window
+  tags = [
+    "tag:helixscale-cluster",
+    "tag:automation"
+  ]
 }
 
 # ── Controller VM ─────────────────────────────────────────────
 module "controller" {
   source = "../terraform/modules/orbstack_vm"
-  name   = "hs-controller"
+  name   = "helixscale-controller"
 }
 
 # ── Worker 1 VM ───────────────────────────────────────────────
 module "worker1" {
   source = "../terraform/modules/orbstack_vm"
-  name   = "hs-worker1"
+  name   = "helixscale-worker1"
 }

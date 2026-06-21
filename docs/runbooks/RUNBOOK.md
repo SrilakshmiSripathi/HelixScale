@@ -1,7 +1,7 @@
-# Step 1: Provision the raw virtual hardware nodes
-cd infra/node1 && terraform apply -auto-approve
-cd ../node2   && terraform apply -auto-approve
+# HelixScale: Runbook
 
-# Step 2: Configure OS constraints & install K3s via network SSH
-cd ../ansible
-ansible-playbook -i inventory_node1.ini -i inventory_node2.ini playbook.yml
+
+#if VM name is change or removed to restart 
+terraform state rm module.worker2.orbstack_machine.vm 
+
+terraform import module.worker2.orbstack_machine.vm helixscale-worker2

@@ -15,8 +15,8 @@ variable "image" {
   description = "VM operating System"
 }
 
-variable "network_id" {
-  type        = string
-  default     = null
-  description = "Optional custom OrbStack network ID attachment pointer."
+variable "disk_size" {
+  type = number
+  default = 100
+  description = "Max Disk usage"
 }

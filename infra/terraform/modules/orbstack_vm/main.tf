@@ -11,4 +11,5 @@ resource "orbstack_machine" "vm" {
   name  = var.name
   arch  = var.arch
   image = var.image
+  disk_size = number.disk_size
 }
