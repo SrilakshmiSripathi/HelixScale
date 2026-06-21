@@ -1,38 +1,46 @@
-.ds_store
-.venv
-.env
-uv.lock
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
 
+# ── Editor & IDE ──────────────────────────────────────────────────────────────
+.zed/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+.venv/
+.python-version
+__pycache__/
+*.py[cod]
+
+# ── Environment & Secrets ─────────────────────────────────────────────────────
+.env
+**/*.tfvars          # Terraform variable files (may contain secrets)
+
+# ── Terraform ─────────────────────────────────────────────────────────────────
+**/.terraform/
+**/.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
-*.ini
-infra/terraform/.terraform.lock.hcl
-infra/terraform/.terraform/
-infra/node1/.terraform/
-infra/node1/.terraform.lock.hcl
-infra/node2/.terraform/
-infra/node2/.terraform.lock.hcl
-infra/terraform/modules/orbstack_vm/.terraform.lock.hcl
-infra/terraform/modules/orbstack_vm/.terraform/providers/registry.terraform.io/robertdebock/orbstack/3.1.2/darwin_arm64/
+*.tfstate.*.backup
+
+# ── WIP / Unreleased paths ────────────────────────────────────────────────────
+# These directories exist in the repo skeleton but are not ready for review.
 infra/helm/
 infra/ansible/
-bootstrap_linux.sh
 infra/cloud/
-docs/runbooks/
-docs/adr/
-docs/
-clusters/
+infra/terraform/modules/eks_cluster/
 automation/ansible/
+clusters/
+docs/
 src/helixscale/
 tests/
+
+# ── Project files not yet public ─────────────────────────────────────────────
+bootstrap_linux.sh
 .pre-commit-config.yaml
-.python-version
 ARCHITECTURE.md
 CHANGELOG.md
 Claude.md
 pyproject.toml
 README.md
 infra/node2/terraform.tfvars
-infra/node1/terraform.tfvars
-.zed/
-infra/terraform/modules/eks_cluster/
+infra/node1/ansible_inventory.tf

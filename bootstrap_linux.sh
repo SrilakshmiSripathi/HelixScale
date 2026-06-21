@@ -3,6 +3,7 @@
 # ------------------------------------------
 # bootstrap.sh - Platform Manager
 # Purpose: Safely sets up the development environment for HelixScale
+# Risk Level: Low (No cloud resources created unless you approve)
 # Requirements: Bash 3+, curl, wget
 # ------------------------------------------
 
@@ -11,116 +12,407 @@ set -o pipefail # Enable pipeline error checking
 set -u          # Treat unset variables as errors
 
 echo "=========================================="
-echo " 🚀 HelixScale Platform Manager "
-echo "📍 Architecture: local Mac M-Series"
+echo " 🚀 Unfolding HelixScale Platform for Mac OS Apple Silicon"
 echo "=========================================="
 echo ""
 
 # --- Configuration Variables ---
 PROJECT_NAME="HelixScale"
-UV_VERSION=latest
-PYTHON_VERSION=latest
-TERRAFORM_VERSION=latest
-ANSIBLE_VERSION=latest
+UV_VERSION="0.9.26"
+PYTHON_VERSION="3.12"  # Python 3.12+ is recommended for Mac M-Series
+TERRAFORM_VERSION="1.14"
+ANSIBLE_VERSION="2.15"
+AWS_REGION = "us-east-1"   # Default region (override in .tfvars)
 
-# --- Step 0: Memory Baseline Check
+# --- Phase 0: Memory & Thermal Check (Critical for M-Series) ---
 check_memory_budget() {
-    echo "Checking for Available memory"
-    # 1. Bypass check if user explicitly forced safety acknowledgment
+    local memory_used=$(pmset -g batteryinfo 2>/dev/null || swutil getcores 2>&1; false)
+    echo " ⚠️ NOTE: Manual Actiivity Monitor check required before proceeding."
+    echo " - Close heavy apps. Ensure <50% Memory Pressure (Green Zone)."
+    echo " - Lids open, Power connected."
+}
+
+# --- Function 1: Detect OS ---
+detech_os() {
+    local HOST_OS=""
+    if [[ $(uname) == "Darmin" ]]; then
+        HOST_OS="macos-arm64"
+    elif [[ $(uname) == "Linux"]]; then
+        HOST_OS="linux-$(uname -m)"
+    else
+        echo " ⚠️ Unsupported OS. Exiting."
+        exit 1
+    fi
+    echo "🔍 Deteched Host: ${HOST_OS}"
+}
+
+# --- Function 2: Install local dependencies (uv, Terraform) ---
+install_local_tools() {
+    local os_type=$(detect_os)
+
+    if [[ "$os_type" == "macos-arm64" ]]; then
+        # macOS Setup (Homebrew / OrbStack)
+        echo "🔨 Installing tools for Apple Silicon (${HOST_OS})..."
+
+    local os_type=$(detect_os)
+
+    local is_mac = false
+    local is_linux = true
+
+    if [[ $(uname) == "Darwin" ]]; then
+        is_mac = true
+        echo "⚠️  Detected macOS (M-Series). Running on POSIX Shell."
+    fi
+
+    # Check for Terraform and AWS CLI
+    if ! command -v terraform &>/dev/null; then
+        echo "   🛠️  Installing Terraform (${TERRAFORM_VERSION})..."
+        curl -LO https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_darwin_amd64.zip
+        # Note: For cross-platform compatibility in a script, we use direct download.
+        # On Linux, the file path usually changes (linux-amd64).
+        # To be truly portable, we detect and adjust extension, or ask user to install manually if auto-fail occurs.
+        # SAFETY NOTE: We check for existing version first to avoid overwriting system tools if managed by root/sudo elsewhere.
+
+        # Since direct downloads vary by architecture (ARM64 vs AMD64), we simplify:
+        echo "   ℹ️  User must ensure Terraform is installed via package manager or binary."
+        return 1
+    fi
+
+    echo "   ✅ Terraform detected ($(terraform --version))"
+
+    if ! command -v aws &>/dev/null; then
+        echo "   🛠️  Installing AWS CLI v2..."
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        rm awscliv2.zip
+    else
+        echo "   ✅ AWS CLI detected ($(aws --version))"
+    fi
+}
+
+
+# --- Step 1: Install uv if not present ---
+echo "🔍 Checking UV installer..."
+
+if ! command -v uv &> /dev/null; then
+    echo "⚠️  UV not found. Installing now (this takes 30 seconds)..."
+
+    # Use curl to install uv silently
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
     echo ""
-    echo "--- ⚠️  MEMORY BUDGET CHECK ---"
-    echo "🔍 Open 'Activity Monitor' on Host."
-    echo "   - Ensure RAM usage > 50% of Total."
-    echo "   - Close background apps (Terminal/VSCode heavy processes)."
-    echo "   - Verify Lids are OPEN and Power is CONNECTED."
+    echo "✅ UV installed successfully."
+
+    # Re-scan to confirm it's ready
+    if ! command -v uv &> /dev/null; then
+        echo "❌ Installation failed. Please check your internet connection."
+        exit 1
+    fi
+else
+    echo "✅ UV already installed (Version: $(uv --version))"
+fi
+
+# --- Step 2: Create Virtual Environment for Python Code ---
+echo ""
+echo "🔧 Creating isolated project environment..."
+
+# Ensure uv is in path
+if [[ ! "$PATH" =~ (^|:)/\.local/bin ]]; then
+    echo "⚠️  Adding UV to PATH. Run source $HOME/.local/bin/env || export PATH=$HOME/.local/bin:$PATH"
+fi
+
+cd "$PROJECT_NAME"  # Ensure we're in the project folder
+
+# Initialize uv project and create virtual environment
+uv init --python "${PYTHON_VERSION}" > /dev/null 2>&1 || {
+    echo "ℹ️  Initializing Python project without error handling..."
+}
+
+# Install common Python dependencies (if any)
+echo ""
+echo "📦 Installing Python dependencies..."
+
+uv add --optional requests boto3 python-dotenv > /dev/null 2>&1 || true
+
+echo "✅ Virtual environment ready."
+
+# --- Step 3: Check System Tools (Terraform & Ansible) ---
+echo ""
+echo "☁️  Checking cloud infrastructure tools..."
+
+if ! command -v terraform &> /dev/null; then
+    echo "⚠️  Terraform not found on system."
+    echo "   To install: brew install terraform"
+    echo ""
+else
+    echo "✅ Terraform installed (Version: $(terraform --version))"
+fi
+
+if ! command -v ansible &> /dev/null; then
+    echo "⚠️  Ansible not found on system."
+    echo "   To install: brew install ansible"
+    echo ""
+else
+    echo "✅ Ansible installed (Version: $(ansible --version))"
+fi
+
+if ! command -v aws &> /dev/null; then
+    echo "⚠️  AWS CLI not found on system."
+    echo "   To install: brew install aws-cli"
+    echo ""
+else
+    echo "✅ AWS CLI installed (Version: $(aws --version))"
+fi
+
+# --- Step 4: Verify AWS Credentials (Safety Check) ---
+echo ""
+echo "🔐 Verifying cloud permissions..."
+
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo ""
+    echo "⚠️  No AWS credentials found in environment."
+    echo ""
+    echo "   To set up credentials securely:"
+    echo "   1. Go to https://console.aws.amazon.com/iam/"
+    echo "   2. Create a new access key for your IAM user"
+    echo "   3. Run: aws configure"
+    echo "   OR export AWS_ACCESS_KEY_ID='...'"
+    echo "   OR export AWS_SECRET_ACCESS_KEY='...'"
     echo ""
 
-    read -r -n 1 -p "Have you closed apps and checked thermal status? [Y/N]: " MEMORY_SAFE
-    if [[ ! "$MEMORY_SAFE" =~ ^[Yy]$ ]]; then
-        echo "❌ Aborting. Please adjust RAM usage and thermal status first."
+    read -p "Would you like to set up AWS credentials now? [y/N]: " SETUP_CREDENTIALS
+
+    if [[ "$SETUP_CREDENTIALS" == "y" || "$SETUP_CREDENTIALS" == "Y" ]]; then
+        echo ""
+        aws configure --profile default
+        # Check again after configuration
+        if [ -z "$AWS_ACCESS_KEY_ID" ]; then
+            echo "❌ Credential setup failed. Please set up credentials manually."
+            exit 1
+        fi
+    else
+        echo "ℹ️  Skipping AWS credential setup for now."
+        echo "   You can run 'aws configure' later before creating cloud resources."
+    fi
+else
+    echo "✅ AWS credentials detected (no action needed)."
+fi
+
+# --- Step 5: Create .gitignore if not exists (Safety Protection) ---
+echo ""
+echo "🛡️  Setting up security protections..."
+
+if [[ ! -f .gitignore ]]; then
+    cat > .gitignore << 'EOF'
+# Python cache
+__pycache__/
+*.py[cod]
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+
+# Terraform State (NEVER commit this!)
+*.tfstate*
+*.tfvars
+
+# Virtual environments
+.env
+.venv/
+venv/
+ENV/
+.venv/
+uv.lock      # Optional: commit if you want locked versions
+
+# AWS Credentials (Never commit)
+.aws/
+*.pem
+EOF
+
+    echo "✅ .gitignore created for security."
+else
+    echo "ℹ️  .gitignore already exists."
+fi
+
+# --- Step 6: Final Summary & Approval Gate ---
+echo ""
+echo "=========================================="
+echo "✅ Environment Ready!"
+echo "=========================================="
+echo ""
+echo "Next Steps:"
+echo "1. Review your AWS Budget settings ($2/month recommended)"
+echo "2. Edit 'main.tf' in infra/ folder with desired resources"
+echo "3. Run: terraform plan (to preview changes)"
+echo "4. Run: ./bootstrap.sh again to refresh environment anytime"
+echo ""
+
+# --- Step 7: Ask for Approval Before Creating Cloud Resources ---
+if ! check_credentials; then
+    echo ""
+    echo "⚠️  Cannot create cloud resources without credentials."
+    echo "   Please run 'aws configure' or set AWS_ACCESS_KEY_ID/SECRET_ACCESS_KEY"
+    exit 0
+fi
+
+echo ""
+echo "☁️  Ready for Cloud Provisioning..."
+read -p "🔐 Do you want to approve Terraform execution now? [y/N]: " CONFIRM_CREATE
+
+if [[ "$CONFIRM_CREATE" == "y" || "$CONFIRM_CREATE" == "Y" ]]; then
+    echo ""
+    echo "✅ Creation Approved. Running Terraform..."
+    terraform init
+
+    if [ -f main.tf ]; then
+        terraform plan
+        read -p "Execute plan? [y/N]: " EXECUTE
+
+        if [[ "$EXECUTE" == "y" || "$EXECUTE" == "Y" ]]; then
+            terraform apply -auto-approve
+            echo ""
+            echo "✅ Cloud resources created successfully."
+            echo "   View your resources in AWS Console!"
+        else
+            echo "ℹ️  Skipping resource creation for now."
+        fi
+    else
+        echo "ℹ️  No main.tf found. Skipping Terraform execution."
+    fi
+else
+    echo "ℹ️  Cloud resource creation skipped."
+fi
+
+echo ""
+echo "=========================================="
+echo "Bootstrap Complete!"
+echo "=========================================="
+
+
+
+
+
+
+# 1. Install uv for Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.cargo/env
+
+# 2. Install all Python dependencies using uv
+uv sync --all-extras
+
+# 3. Install core OS dependencies (Ubuntu equivalents of the macOS brew prerequisites)
+sudo apt update && sudo apt install -y ansible nodejs
+snap install terraform --classic
+
+
+
+
+#!/bin/bash
+
+# -----------------------------------------------------------------------------
+# bootstrap.sh - Safety First Initialization Script
+# Purpose: Prepares the environment safely before creating cloud resources
+# Author: HPC Platform Engineer Portfolio (Phase 1)
+# Risk Level: Low (Requires user confirmation to spend money)
+# -----------------------------------------------------------------------------
+
+set -e # Exit immediately if a command exits with non-zero status
+set -o pipefail # Enable pipeline error checking
+
+echo "🚀 Starting HPC Platform Bootstrap..."
+echo "=================================================="
+
+# --- 1. Check and Install 'uv' (Python Manager) ---
+# Why? uv is faster than pip. We install it once, then reuse it locally.
+check_uv() {
+    if command -v uv &> /dev/null; then
+        echo "✅ UV is already installed."
+        echo "   Version: $(uv --version)"
+        return 0
+    else
+        echo "⚠️  UV not found. Installing now (this takes a moment)..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        source $HOME/.local/bin/env # Ensure path is updated for this session
+        if command -v uv &> /dev/null; then
+            echo "✅ UV installation complete."
+            return 0
+        else
+            echo "❌ Installation failed. Please try manually with curl..."
+            exit 1
+        fi
+    fi
+}
+
+# --- 2. Check AWS Credentials (Safety Guard) ---
+# Why? We never want to accidentally use your credentials without checking.
+check_credentials() {
+    if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+        echo "⚠️  WARNING: No AWS Credentials detected in environment."
+        echo "   You can generate these at https://console.aws.amazon.com/iam/"
+        echo "   Set them using: export AWS_ACCESS_KEY_ID='...'"
+        echo "   (Or use 'aws configure' to set them securely)."
+        echo ""
+        echo "   ⛔ CLOUD RESOURCE CREATION SKIPPED due to missing keys."
+        echo "   This prevents accidental bills!"
+        return 1
+    else
+        echo "✅ AWS Credentials detected."
+        echo "   (Note: Keys are never logged or displayed)."
         return 0
     fi
 }
 
-detect_os() {
-    local HOST_OS=""
-    if [[ $(uname) == "Darwin" ]]; then
-        HOST_OS="macos-arm64"
-    elif [[ $(uname) == "Linux" ]]; then
-        HOST_OS="linux-$(uname -m)" # e.g., linux-amd64 or linux-arm64
-    else
-        echo "❌ Unsupported OS. Exiting."
-        exit 1
-    fi
-    echo "🔍 Detected Host: ${HOST_OS}"
-    echo "✅ Acknowledged. Proceeding with installation..."
-}
-
-
-install_mac_tools() {
-    echo ""
-    echo "--- 🔨 Installing Essential Tools ---"
-
-    # Check for Brew
-    if ! command -v brew &> /dev/null; then
-        echo "❌ Homebrew not found. Please install via https://brew.sh/"
+# --- 3. Logic to Create/Check Linux VM (Cloud Instance) ---
+# Why? This is the critical step. We ask for permission first.
+create_linux_vm() {
+    if ! check_credentials; then
+        echo "Cannot create VM without credentials."
         return 1
     fi
-    # Update Brew
-    echo "Cleaning up and Updating Homebrew..."
-    brew cleanup
-    brew update && brew upgrade --greedy
 
-    # List of tools to install
-        local tools=("ansible" "helm" "kubernetes-cli" "terraform" "awscli")
+    # Safety Check: Did you really mean it?
+    read -p "⚠️  This action will spin up a Cloud Linux Instance (EC2/GCP). Do you want to proceed? [y/N]: " CONFIRM
 
-        for tool in "${tools[@]}"; do
-            if ! command -v "$tool" &> /dev/null; then
-                echo "🛠️  Installing $tool..."
-                brew uninstall "$tool" || { echo "❌ $tool install failed."; return 1; }
-            else
-                echo "✅ $tool is already installed."
-            fi
-        done
+    if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
+        echo "✅ VM Creation Request Approved. Running Terraform..."
 
-    # Verify Caffeinate (Native tool, no install needed)
-        if command -v caffeinate &> /dev/null; then
-            echo "✅ Caffeinate system utility ready."
-        else
-            echo "❌ Error: Caffeinate not found. This is unexpected on macOS."
-            return 1
-        fi
+        # We use 'terraform apply' here but only for the specific resources defined in Phase 1
+        # In a real project, you might pass --target to only create the instance (e.g., -var=instance_name="my-vm")
+        terraform init
+        terraform plan -out=tfplan && terraform apply -auto-approve tfplan
 
-    # --- 1. Verify Kube-config ---
-    echo "--- 🔍 Checking Kube-config ---"
-    if [ -f "$HOME/.kube/config" ]; then
-        echo "✅ Kube-config found at ~/.kube/config"
-
+        echo "✅ VM Instance Ready."
     else
-        echo "❌ Kube-config not found. Ensure K3s is initialized and the config is copied to ~/.kube/config"
-        exit 1
+        echo "ℹ️  Skipping VM creation for now. Run this script again with confirmation."
     fi
-
-    # --- 2. Verify Cgroup v2 (Run inside worker VMs) ---
-    # Note: This is an example command to run via SSH
-    echo "--- 🔍 Verifying Cgroup v2 on Workers ---"
-    for node in "worker-1" "worker-2"; do
-        echo "Checking $node..."
-        ssh "$node" "stat -fc %T /sys/fs/cgroup/" | grep -q "cgroup2fs" && echo "✅ $node: Cgroup v2 active" || echo "❌ $node: Cgroup v2 NOT active"
-    done
-
-    # --- 3. Deploy NFS CSI Driver via Helm ---
-    echo "--- 🚀 Deploying NFS CSI Driver ---"
-    helm repo add csi-driver-nfs https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
-    helm repo update
-    helm upgrade --install csi-driver-nfs csi-driver-nfs/csi-driver-nfs \
-        --namespace kube-system \
-        --set controller.replicas=1
-
-    echo "--- ✅ Setup Complete ---"
 }
 
-# --- EXECUTE THE FUNCTION ---
-check_memory_budget
-detect_os
-install_mac_tools
+# --- 4. Main Execution Flow ---
+# Step-by-step process to prevent mistakes
+
+# 1. Setup Local Tools (uv) - This is always safe and local
+echo "📦 Checking Python Manager..."
+check_uv
+
+# 2. Check Cloud Permissions (Safety Gate)
+echo "🔐 Checking Security Credentials..."
+check_credentials
+
+# 3. Ask to Create Cloud Resources (The Risky Part)
+echo "☁️  Ready for Cloud Provisioning Logic..."
+create_linux_vm
+
+echo "=================================================="
+echo "Bootstrap Complete."
+echo "Next Step: Check your AWS Console for the new resources if any were created."
