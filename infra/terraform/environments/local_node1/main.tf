@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 1.5.0"
   required_providers {
     orbstack = {
       source  = "robertdebock/orbstack"
@@ -23,18 +24,18 @@ resource "tailscale_tailnet_key" "vm_auth_key" {
   preauthorized = true
   expiry        = 3600 # 1 hour validity window
   tags = [
-    "tag:helixscale-prod"
+    "tag:helixscale-cluster"
   ]
 }
 
 # ── Controller VM ─────────────────────────────────────────────
 module "controller" {
-  source = "../terraform/modules/orbstack_vm"
+  source = "../../modules/orbstack_vm"
   name   = "helixscale-controller"
 }
 
 # ── Worker 1 VM ───────────────────────────────────────────────
 module "worker1" {
-  source = "../terraform/modules/orbstack_vm"
+  source = "../../modules/orbstack_vm"
   name   = "helixscale-worker1"
 }

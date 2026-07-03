@@ -1,6 +1,6 @@
-# HelixScale: BioNeMo-AI HPC Fabric Orchestration Platform
+# HelixScale: Hybrid HPC Platform
 
-> Production-grade HPC platform engineering for GPU-accelerated computational biology workloads — from bare metal to cloud, single node to multi-cluster.
+> Production-grade HPC platform engineering for GPU-accelerated computational biology workloads — from bare metal to cloud, scalable from single node to multi-cluster.
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Terraform](https://img.shields.io/badge/terraform-%3E%3D1.7-7B42BC.svg)](https://www.terraform.io/)
@@ -11,148 +11,75 @@
 
 ## What This Project Demonstrates
 
-HelixScale is a working HPC orchestration platform that provisions GPU clusters, schedules BioNeMo protein-folding workloads across Slurm and Altair Grid Engine, and monitors everything through a full observability stack. It processes real protein structures from the Protein Data Bank (PDB) — not toy examples.
+HelixScale is a working HPC orchestration platform that provisions GPU clusters, schedules BioNeMo protein-folding workloads across Slurm and Kubernetes, and monitors everything through a full observability stack. 
 
 This project covers the full lifecycle that platform engineering and AI infrastructure roles demand:
-
-**Infrastructure Provisioning** — Terraform modules for VPC, GPU compute (A100/H100), FSx Lustre scratch storage, and EFS persistent storage on AWS/EKS and AKS.
-
-**Cluster Configuration** — Ansible roles for Slurm controller/compute nodes, NVIDIA driver installation, CUDA toolkit, DCGM telemetry, and Apptainer (rootless HPC containers).
-
-**Workload Orchestration** — DAG-based pipeline engine that chains protein folding stages (fetch → preprocess → inference → postprocess → report) with native scheduler dependency resolution via `--dependency=afterok`.
-
-**Dual Scheduler Support** — Protocol-based abstraction over Slurm (primary) and Altair Grid Engine (secondary), wrapping real CLI commands (`sbatch`, `squeue`, `qsub`, `qstat`) — not library mocks.
-
-**GPU Resource Management** — Advisory allocation layer on top of Slurm GRES with GPU type validation, queue wait estimation, and NVIDIA MIG partitioning awareness.
-
-**Observability** — Prometheus + Grafana + Loki stack with custom Slurm exporters, DCGM GPU metrics, NVIDIA Triton inference server monitoring, and three pre-built dashboards.
-
-**Compliance as Code** — Chef InSpec profiles validating GPU driver versions, GRES configuration, Slurm service health, and storage mount integrity.
-
-**MLOps Integration** — Experiment tracking, model versioning, and a Streamlit web interface for pipeline submission and monitoring.
+- **Infrastructure Provisioning** — Terraform modules for VPC, GPU compute, and EFS persistent storage on AWS EKS / Azure AKS.
+- **Cluster Configuration** — Ansible roles for Slurm, NVIDIA driver installation, CUDA toolkit, and container runtimes.
+- **Workload Orchestration** — DAG-based pipeline engine that chains protein folding stages.
+- **FinOps Governance** — Automatic resource reclamation to prevent budget overruns (Zero-Cost Idle Policy).
+- **Security & Compliance** — Automated vulnerability scanning, secrets management integration, and compliance validation.
 
 ---
 
-## Architecture
+## Architecture Overview
 
+HelixScale operates on a strict **Control vs Compute Plane** model. This ensures that the local environment (Control Plane) manages orchestration and security, while the heavy lifting occurs in the scalable cloud (Compute Plane).
+
+```mermaid
+graph TD
+    Dev[Developer / Control Plane] -->|SSH/Session Manager| Infra[Terraform IaC & Ansible]
+    
+    subgraph "Cloud Compute Plane"
+        Terra -->|Create| VPC[AWS VPC + EKS Cluster]
+        VPC -->|Deploy| K8s[Kubernetes Nodes + GPU Drivers]
+        K8s -->|Schedule| Slurm[Slurm + Volcano Scheduler]
+        Slurm -->|Queue Jobs| Workload[BioNeMo Inference / MPI Jobs]
+        Workload -->|Store Results| S3[AWS S3 Bucket]
+        Infra -->|Monitor| Grafana[Grafana Dashboard + Prometheus Metrics]
+    end
+    
+    subgraph "Local Orchestration"
+        Dev -->|Push Code| CI[GitHub Actions CI/CD Pipeline]
+        CI -->|Run Scans| Security[Trivy/Snyk Security Scan]
+        CI -->|Deploy Artifacts| Registry[AWS ECR Private Registry]
+        Security -->|Block If Failed| Dev
+    end
+    
+    subgraph "Cost & Safety Controls"
+        FinOps[Cleanup Agent Script] -.->|Auto-terminate idle nodes| K8s
+        Budget[AWS Budget Alert Limit] -.->|Stop New Provisions| Terra
+        Policy[Security Policy Rules] -.->|Enforce Pod Standards| K8s
+    end
+    
+    S3 -->|Data Ingestion| Workload
+    Dev -->|View Results| Dashboard[Grafana Visualization]
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        CLI / Streamlit UI                    │
-│              helixscale [cluster|jobs|infra|monitor]         │
-├──────────────────────────────────────────────────────────────┤
-│                     Orchestration Engine                     │
-│         Pipeline DAG  ←→  Scheduler Abstraction              │
-│        (dependency      (Slurm | SGE | Local)                │
-│         resolution)        GPU Allocator                     │
-├──────────────────────────────────────────────────────────────┤
-│                     Container Runtimes                       │
-│              Docker (T0/T1)  |  Apptainer (T2)               │
-├──────────────┬──────────────┬────────────────────────────────┤
-│  Terraform   │   Ansible    │   Chef InSpec                  │
-│  (provision) │  (configure) │   (validate)                   │
-├──────────────┴──────────────┴────────────────────────────────┤
-│                     Observability                            │
-│    Prometheus → Grafana    DCGM Exporter    Loki             │
-│    Slurm Exporter          Triton Metrics                    │
-└──────────────────────────────────────────────────────────────┘
-```
 
-### Deployment Tiers
-
-| Tier | Environment | GPU | Scheduler | Use Case |
-|------|-------------|-----|-----------|----------|
-| **T0 — Local** | macOS M1 Pro | CPU fallback | Mini-Slurm (Docker Compose) | Development & validation |
-| **T1 — Cloud** | AWS EKS / AKS | A100/H100 | Slurm on provisioned infra | Production demo |
-| **T2 — HPC** | On-prem cluster | Multi-node GPU | Slurm + Altair SGE | Full-scale deployment |
-
-Every component runs at T0 first. If it doesn't work in Docker Compose, it doesn't ship.
+### Deployment Strategy
+HelixScale is designed to be environment-agnostic, parameterizing its targets so that `dev`, `staging`, and `prod` configurations remain cleanly separated within the same pipeline toolchain.
 
 ---
 
-## The BioNeMo Workload
+## Running the Project (Make Commands)
 
-Real Bronze level protein structure prediction using NVIDIA BioNeMo and Meta's ESM-2, processing **50 3D structures from the Protein Data Bank (PDB)**.
+HelixScale abstracts operations behind a unified `Makefile`. Use environment variables to target different setups (e.g., `ENV=prod`).
 
-```
-PDB FASTA Input → Tokenization → ESMFold Inference → PDB Output + pLDDT Scores → Report
-     (CPU)           (CPU)         (GPU / CPU)              (CPU)                (CPU)
-```
+### Environment Setup & Testing
+- `make setup` : Initializes the local environment, sets up `uv` virtual environment, and installs dependencies.
+- `make lint` : Runs `ruff` checks/formatting and `mypy` type checking.
+- `make test` : Executes the unit test suite.
 
-- **T0 (Local):** ESM-2 embeddings via Meta's `esm` package — real model, CPU-only, no fake GPU metrics
-- **T1/T2 (Cloud/HPC):** Full ESMFold/OpenFold on A100 via `nvcr.io/nvidia/bionemo:1.0` container
-- **Output:** Per-protein PDB files with confidence scores (pLDDT), aggregated HTML report with structure visualization
+### Infrastructure Deployment (Terraform)
+- `make ENV=dev tf-plan` : Initializes and runs `terraform plan` for the specified environment.
+- `make ENV=dev tf-apply` : Executes the infrastructure deployment for the specified environment.
 
----
+### Configuration Management & Workloads
+- `make ENV=dev ansible-deploy` : Runs Ansible playbooks to configure the provisioned nodes.
+- `make ENV=dev helm-deploy` : Deploys Kubernetes workloads via Helmfile to the configured cluster.
 
-## Tech Stack
-
-### Core
-| Category | Tools |
-|----------|-------|
-| Language | Python 3.12+, Bash, HCL, YAML |
-| Package Manager | UV (10–100x faster than pip) |
-| CLI Framework | Typer + Rich |
-| Configuration | Pydantic Settings (tier-aware, env-driven) |
-
-### Infrastructure & Orchestration
-| Category | Tools |
-|----------|-------|
-| Provisioning | Terraform (AWS/GCP modules) |
-| Configuration | Ansible (Slurm, drivers, storage) |
-| Compliance | Chef InSpec |
-| Containers | Docker, Apptainer (HPC-native, rootless) |
-| Schedulers | Slurm (primary), Altair Grid Engine |
-| Cloud | AWS EKS, Azure AKS |
-
-### NVIDIA Stack
-| Category | Tools |
-|----------|-------|
-| Workload | BioNeMo (ESMFold protein folding) |
-| GPU Telemetry | DCGM Exporter |
-| Inference | Triton Inference Server |
-| Partitioning | MIG (Multi-Instance GPU) |
-| Communication | NCCL (multi-GPU) |
-| Runtime | CUDA Toolkit, nvidia-container-toolkit |
-
-### Observability & MLOps
-| Category | Tools |
-|----------|-------|
-| Metrics | Prometheus + Grafana (3 dashboards) |
-| Logs | Loki |
-| GPU Monitoring | DCGM + custom Slurm exporter |
-| Web UI | Streamlit |
-| CI/CD | GitHub Actions (lint, test, infra-plan, container-build) |
-
----
-
-## Quick Start (T0 — Local)
-
-```bash
-# Clone and install
-git clone https://github.com/<your-username>/helixscale.git
-cd helixscale
-uv sync --all-extras
-
-# Lint and test
-make lint
-make test
-
-# Start local Slurm cluster (Docker Compose)
-make t0-up
-
-# Submit a protein folding pipeline (dry run first)
-uv run helixscale jobs submit pipelines/workloads/protein_folding.yaml --dry-run
-uv run helixscale jobs submit pipelines/workloads/protein_folding.yaml
-
-# Monitor GPU metrics (Rich TUI)
-uv run helixscale monitor gpu
-
-# Grafana dashboards
-open http://localhost:3000
-
-# Teardown
-make t0-down
-```
+### Housekeeping
+- `make clean` : Removes Python cache directories (`__pycache__`, `.pyc`, `.pytest_cache`, etc.).
 
 ---
 
@@ -160,91 +87,49 @@ make t0-down
 
 ```
 helixscale/
-├── src/helixscale/
-│   ├── cli/                  # Typer CLI (cluster, jobs, infra, monitor)
-│   ├── orchestrator/         # Pipeline DAG, scheduler abstraction, GPU allocator
-│   ├── monitoring/           # Prometheus exporters, DCGM integration, dashboards
-│   └── utils/                # Tier-aware config, container runtime abstraction
-├── infra/
-│   ├── terraform/            # VPC, compute, storage, scheduler modules
-│   ├── ansible/              # Slurm, GPU drivers, Apptainer, monitoring roles
-│   └── chef/inspec/          # Compliance profiles
-├── containers/               # Dockerfiles, Apptainer .def, docker-compose.yml
-├── scheduler/                # Slurm/SGE configs, job templates, prolog scripts
-├── pipelines/                # CI/CD workflows, BioNeMo workload definitions
-├── monitoring/               # Prometheus, Grafana dashboards, alerting rules
-├── docs/                     # Architecture, tradeoffs, runbook
-└── tests/                    # Unit, integration (T0), e2e
+├── Makefile                   # Unified entrypoint for all ops (parameterized by ENV)
+├── README.md                  # Project overview, architecture, and quickstart
+├── ARCHITECTURE.md            # System architecture details
+├── src/                       # Application source code (Python, CLI, orchestrator)
+│   └── helixscale/
+├── tests/                     # Unit and integration tests
+├── infra/                     # Infrastructure and Configuration
+│   ├── terraform/             # IaC: Cloud resources (VPC, EKS, Node Groups, Storage)
+│   ├── ansible/               # Configuration Management: OS-level setup (Slurm, drivers)
+│   └── helm/                  # Kubernetes Deployments: Operators, observability
+├── pipelines/                 # CI/CD workflows, DAGs, BioNeMo workload definitions
+└── docs/                      # Standardized project documentation
 ```
 
 ---
 
-## Key Design Decisions
+## Tech Stack
 
-| Decision | Chosen | Why |
-|----------|--------|-----|
-| Slurm over K8s-only | Slurm is the HPC standard — gang scheduling, fairshare, preemption. K8s orchestrates *around* the cluster, not as the batch scheduler. |
-| Apptainer over Docker on HPC | No root daemon, MPI-native `srun` integration, required by most HPC facilities. |
-| CLI wrapping over library bindings | `sbatch`/`squeue`/`qsub` — this is how HPC admins actually operate clusters. |
-| Terraform + Ansible + InSpec | Provision → Configure → Validate. Three tools, three concerns, no overlap. |
-| CPU fallback on every GPU path | Every GPU function has `if config.cpu_fallback:` with explicit logging. No fake metrics, no silent degradation. |
-| UV over pip/poetry | 10–100x faster dependency resolution. Modern lockfile. Production-ready. |
-| Real Slurm in Docker (T0) | `giovtorres/slurm-docker-cluster` proves real `sbatch`/`squeue` integration, not mocked subprocess calls. |
+| Layer | Technologies |
+|-------|--------------|
+| **Core** | Python 3.12+, Bash, UV, Typer, Pydantic |
+| **Infrastructure** | Terraform, Ansible |
+| **Containers** | Docker, Apptainer (rootless HPC), NVIDIA Container Toolkit |
+| **Orchestration** | Slurm, Kubernetes (EKS/AKS), Volcano |
+| **Workloads** | NVIDIA BioNeMo (ESMFold) |
+| **Observability** | Prometheus, Grafana, Loki, DCGM Exporter |
+| **CI/CD & Security** | GitHub Actions, Trivy, AWS Secrets Manager |
 
 ---
 
-## Testing Strategy
+## The BioNeMo Workload
 
-| Level | What It Proves | How |
-|-------|---------------|-----|
-| **Unit** | Scheduler abstraction, config parsing, DAG resolution | `pytest` + mocks |
-| **Integration** | Real Slurm job submission in Docker Compose | `pytest` + T0 stack |
-| **E2E** | Full pipeline: provision → submit → monitor → report | GitHub Actions |
-| **Compliance** | GPU drivers, GRES config, service health, storage mounts | Chef InSpec |
+Real Bronze-level protein structure prediction using NVIDIA BioNeMo and Meta's ESM-2. Processes 3D structures from the Protein Data Bank (PDB).
 
-```bash
-make test          # Unit tests
-make t0-test       # Integration tests (starts/stops Docker stack)
-make validate      # InSpec compliance
+```text
+PDB FASTA Input → Tokenization → ESMFold Inference → PDB Output + pLDDT Scores → HTML Report
 ```
-
----
-
-## Roadmap
-
-- [x] Project scaffold and dependency setup
-- [ ] Core scheduler abstraction (Slurm + SGE + Local backends)
-- [ ] Pipeline DAG engine with dependency resolution
-- [ ] CLI with `--dry-run` on all destructive commands
-- [ ] T0 Docker Compose stack (3-node Slurm cluster)
-- [ ] BioNeMo protein folding pipeline (50 PDB structures)
-- [ ] Terraform modules (VPC, compute, storage, scheduler)
-- [ ] Ansible roles (Slurm, NVIDIA drivers, Apptainer)
-- [ ] Prometheus + Grafana observability stack
-- [ ] NVIDIA Triton integration for model serving
-- [ ] MIG partitioning support
-- [ ] Streamlit web interface
-- [ ] Chef InSpec compliance profiles
-- [ ] CI/CD pipelines (GitHub Actions)
-- [ ] EKS / AKS cloud deployment
-- [ ] Architecture and tradeoffs documentation
-
----
-
-## Target Roles
-
-This project is built to demonstrate readiness for:
-
-- **Platform Engineering** — full infrastructure lifecycle, IaC, config management, compliance
-- **AI Infrastructure** — GPU cluster provisioning, model serving, NVIDIA stack depth
-- **HPC Engineering** — Slurm/SGE administration, workload scheduling, multi-node GPU jobs
-- **DevOps/SRE** — observability, CI/CD, container orchestration, incident runbooks
 
 ---
 
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for more details.
 
 ---
 

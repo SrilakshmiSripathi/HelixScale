@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 1.5.0"
   required_providers {
     tailscale = {
       source  = "tailscale/tailscale"
@@ -30,6 +31,6 @@ resource "tailscale_tailnet_key" "vm_auth_key" {
 
 # ── Worker 2 VM ───────────────────────────────────────────────
 module "worker2" {
-  source = "../terraform/modules/orbstack_vm"
+  source = "../../modules/orbstack_vm"
   name   = "helixscale-worker2"
 }

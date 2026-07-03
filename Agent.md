@@ -1,9 +1,9 @@
-# Claude.md — HelixScale: BioNeMo-AI HPC Fabric Orchestration Platform
+# Claude.md — HelixScale: Hybrid HPC Platform
 
 
 ## Project Identity
 
-**Name:** HelixScale — BioNemo HPC Orchestration Showcase
+**Name:** HelixScale — Hybrid HPC Platform
 **Type:** Production-grade portfolio project demonstrating full-stack HPC platform engineering
 **Goal:** Prove ability to design, automate, and operate GPU-accelerated HPC infrastructure for computational biology workloads (BioNeMo-class)
 

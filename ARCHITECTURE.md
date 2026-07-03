@@ -1,9 +1,9 @@
-HelixScale: HelixScale: BioNeMo-AI HPC Fabric Orchestration Platform
+HelixScale: HelixScale: Hybrid HPC Platform
 Version: 2.0 (Professional Portfolio)
 Classification: Enterprise-Simulation / Production Blueprint
 Target Roles: HPC Engineer, Platform Engineering, Data Platform Specialist
 License: MIT
-Date: March 2026
+Date: March 2026(ongoing)
 
 ## 📖 1. Executive Summary
 HelixScale is a hybrid infrastructure platform designed to orchestrate High-Performance Computing (HPC) and Artificial Intelligence (AI) workloads efficiently.
@@ -47,8 +47,6 @@ graph TD
     
     S3 -->|Data Ingestion| Workload
     Dev -->|View Results| Dashboard[Grafana Visualization]
-
-
 
 
 ## 🔹 Control Plane (Local Development Machine)
@@ -143,20 +141,19 @@ Enterprise HPC platforms must optimize spend, especially when using Spot Instanc
 Spot Fleet Utilization: GPU nodes run on Spot Instances for up to 90% savings with auto-recovery logic if interruptions occur.
 Idle Detection: Cleanup agents monitor GPU utilization metrics; nodes are terminated after 30 minutes of inactivity.
 Budget Hard Limits: AWS Budgets set at $2/month with immediate notifications at 80% threshold.
-🚀 Local vs Cloud Development Workflow
-Phase 1: Blueprinting (Local)
+🚀 Deployment Workflow
+1. Blueprinting & Testing (Local)
 Goal: Create architecture, write Terraform plans, test Python logic locally on Mac/WSL.
 Resources: Zero cloud resources created; all terraform plan outputs reviewed first.
-Phase 2: Controlled Provisions (Cloud)
-Goal: Spin up specific compute resources for testing with approval gates (bootstrap.sh).
-Safety Gate: Must confirm via script or GitHub Actions before spinning GPU instances.
-Phase 3: Production Simulation (CI/CD)
+2. Infrastructure Provisioning (Cloud)
+Goal: Spin up specific compute resources (VPC, Node Groups) using Terraform.
+Safety Gate: Must confirm via pipeline or explicit apply before spinning up GPU instances.
+3. Production Simulation (CI/CD)
 Goal: Full pipeline automation where code is built, scanned, and deployed automatically on push.
-📚 Missing Components & Future Roadmap
-While this blueprint is fully functional for Phase 1, here are recommended additions for Phase 2:
 
+📚 Future Roadmap
 Feature	Status	Reason for Future Addition
-Multi-Cluster Support	Incomplete	Add support for scaling to Azure or GCP clusters in future phases.
+Multi-Cluster Support	Incomplete	Add support for scaling to Azure or GCP clusters.
 MLflow Registry	Incomplete	Integrate full model versioning and experiment tracking for AI roles.
 InfiniBand Networking	Not Implemented	Simulate RDMA over Converged Ethernet (RoCE) performance testing for HPC.
 Disaster Recovery	Not Implemented	Implement cross-region S3 replication and EKS backup policies.

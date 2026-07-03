@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 1.5.0"
   required_providers {
     orbstack = {
       source  = "robertdebock/orbstack"
@@ -11,4 +12,4 @@ resource "orbstack_machine" "vm" {
   name  = var.name
   arch  = var.arch
   image = var.image
-  }
+}

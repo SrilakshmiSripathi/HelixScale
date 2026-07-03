@@ -13,23 +13,19 @@ __pycache__/
 
 # ── Environment & Secrets ─────────────────────────────────────────────────────
 .env
-**/*.tfvars          # Terraform variable files (may contain secrets)
 
 # ── Terraform ─────────────────────────────────────────────────────────────────
 **/.terraform/
-**/.terraform.lock.hcl
 *.tfstate
-*.tfstate.backup
-*.tfstate.*.backup
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+infra/terraform/environments/cloud/prod/terraform.tfvars
+
 
 # ── WIP / Unreleased paths ────────────────────────────────────────────────────
 # These directories exist in the repo skeleton but are not ready for review.
-infra/helm/
-infra/ansible/
-infra/cloud/
-infra/terraform/modules/eks_cluster/
-automation/ansible/
-clusters/
 docs/
 src/helixscale/
 tests/
@@ -39,9 +35,14 @@ bootstrap_linux.sh
 .pre-commit-config.yaml
 ARCHITECTURE.md
 CHANGELOG.md
-Claude.md
 pyproject.toml
 README.md
-infra/node2/terraform.tfvars
-infra/node1/ansible_inventory.tf
-infra/node1/terraform.tfvars
+infra/observability/
+infra/testing/
+infra/ansible/
+infra/helm/
+infra/infra_deployment.sh
+infra/terraform/environments/cloud/
+infra/terraform/environments/global/s3_backend/
+
+uv.lock
