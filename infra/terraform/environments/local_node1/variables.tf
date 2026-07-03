@@ -1,20 +1,20 @@
 variable "name" {
   type        = string
   description = "The hostname of the VM"
+  default     = "helixscale-node1"
 }
-
 variable "arch" {
   type        = string
-  default     = "arm64" # Optimized for your Mac M1/M5 Max setup
+  default     = "arm64"
   description = "The host architecture"
-  validation {
-    condition     = contains(["arm64", "amd64"], var.arch)
-    error_message = "Architecture must be either arm64 or amd64."
-  }
 }
-
 variable "image" {
   type        = string
-  default     = "rocky:9.4"
+  default     = "rocky:9"
   description = "VM operating System"
+}
+variable "tailscale_api_key" {
+  type        = string
+  description = "Tailscale API Key"
+  sensitive   = true
 }
